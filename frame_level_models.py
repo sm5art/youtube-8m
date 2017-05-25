@@ -20,6 +20,7 @@ import models
 import video_level_models
 import tensorflow as tf
 import model_utils as utils
+import numpy as np
 
 import tensorflow.contrib.slim as slim
 from tensorflow import flags
@@ -225,6 +226,126 @@ class LstmModel(models.BaseModel):
 
     outputs, state = tf.nn.dynamic_rnn(stacked_lstm, model_input,
                                        sequence_length=num_frames,
+                                       dtype=tf.float32)
+
+    aggregated_model = getattr(video_level_models,
+                               FLAGS.video_level_classifier_model)
+
+    return aggregated_model().create_model(
+        model_input=state[-1].h,
+        vocab_size=vocab_size,
+        **unused_params)
+
+
+class CNNLSTMModel(models.BaseModel):
+
+  def create_model(self, model_input, vocab_size, num_frames, **unused_params):
+    """Creates a model which uses a stack of LSTMs to represent the video.
+
+    Args:
+      model_input: A 'batch_size' x 'max_frames' x 'num_features' matrix of
+                   input features.
+      vocab_size: The number of classes in the dataset.
+      num_frames: A vector of length 'batch' which indicates the number of
+           frames for each video (before padding).
+
+    Returns:
+      A dictionary with a tensor containing the probability predictions of the
+      model in the 'predictions' key. The dimensions of the tensor are
+      'batch_size' x 'num_classes'.
+    """
+    """4 different cnn layers into one rnn with sequence length 4"""
+    divisor = num_frames//4
+    quart1 = None
+    #batch_size x 32 x 32
+    quart2 = None
+    quart3 = None
+    quart4 = None
+
+    average1 = tf.reduce_mean(model_input[0: divisor])
+    average2 = tf.reduce_mean(model_input[divisor: divisor*2])
+    average3 = tf.reduce_mean(model_input[divisor*2: divisor*3])
+    average4 = tf.reduce_mean(model_input[divisor*3:])
+    quart1 = tf.reshape(average1, [32, 32])
+    quart2 = tf.reshape(average2, [32, 32])
+    quart3 = tf.reshape(average3, [32, 32])
+    quart4 = tf.reshape(average4, [32, 32])
+
+    p1conv1 = tf.layers.conv2d(
+      inputs=quart1,
+      filters=32,
+      kernel_size=[5, 5],
+      padding="same",
+      activation=tf.nn.relu)
+    p1pool1 = tf.layers.max_pooling2d(inputs=p1conv1, pool_size=[2, 2], strides=2)
+    p1conv2 = tf.layers.conv2d(
+      inputs=p1pool1,
+      filters=64,
+      kernel_size=[5, 5],
+      padding="same",
+      activation=tf.nn.relu)
+    p1pool2 = tf.layers.max_pooling2d(inputs=p1conv2, pool_size=[2, 2], strides=2)
+
+    p2conv1 = tf.layers.conv2d(
+      inputs=quart2,
+      filters=32,
+      kernel_size=[5, 5],
+      padding="same",
+      activation=tf.nn.relu)
+    p2pool1 = tf.layers.max_pooling2d(inputs=p2conv1, pool_size=[2, 2], strides=2)
+    p2conv2 = tf.layers.conv2d(
+      inputs=p2pool1,
+      filters=64,
+      kernel_size=[5, 5],
+      padding="same",
+      activation=tf.nn.relu)
+    p2pool2 = tf.layers.max_pooling2d(inputs=p2conv2, pool_size=[2, 2], strides=2)
+
+    p3conv1 = tf.layers.conv2d(
+      inputs=quart3,
+      filters=32,
+      kernel_size=[5, 5],
+      padding="same",
+      activation=tf.nn.relu)
+    p3pool1 = tf.layers.max_pooling2d(inputs=p3conv1, pool_size=[2, 2], strides=2)
+    p3conv2 = tf.layers.conv2d(
+      inputs=p3pool1,
+      filters=64,
+      kernel_size=[5, 5],
+      padding="same",
+      activation=tf.nn.relu)
+    p3pool2 = tf.layers.max_pooling2d(inputs=p3conv2, pool_size=[2, 2], strides=2)
+
+    p4conv1 = tf.layers.conv2d(
+      inputs=quart4,
+      filters=32,
+      kernel_size=[5, 5],
+      padding="same",
+      activation=tf.nn.relu)
+    p4pool1 = tf.layers.max_pooling2d(inputs=p4conv1, pool_size=[2, 2], strides=2)
+    p4conv2 = tf.layers.conv2d(
+      inputs=p4pool1,
+      filters=64,
+      kernel_size=[5, 5],
+      padding="same",
+      activation=tf.nn.relu)
+    p4pool2 = tf.layers.max_pooling2d(inputs=p4conv2, pool_size=[2, 2], strides=2)
+    cnn_output = tf.concat([p1pool2, p2pool2, p3pool2, p4pool2])
+
+    lstm_size = FLAGS.lstm_cells
+    number_of_layers = FLAGS.lstm_layers
+
+    stacked_lstm = tf.contrib.rnn.MultiRNNCell(
+            [
+                tf.contrib.rnn.BasicLSTMCell(
+                    lstm_size, forget_bias=1.0)
+                for _ in range(number_of_layers)
+                ])
+
+    loss = 0.0
+
+    outputs, state = tf.nn.dynamic_rnn(cnn_output, model_input,
+                                       sequence_length=4,
                                        dtype=tf.float32)
 
     aggregated_model = getattr(video_level_models,

@@ -1,3 +1,10 @@
+gcloud ml-engine local train \
+--package-path=youtube-8m --module-name=youtube-8m.train -- \
+--train_data_pattern='gs://youtube8m-ml/1/video_level/train/train*.tfrecord' \
+--train_dir=/tmp/yt8m_train --model=CNNLSTMModel --start_new_model \
+--base_learning_rate=0.001 --frame_features=True --feature_names="rgb" \
+ --feature_sizes="1024" --batch_size="128"  
+
 # YouTube-8M Tensorflow Starter Code
 
 This repo contains starter code for training and evaluating machine learning

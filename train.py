@@ -32,6 +32,7 @@ from tensorflow import logging
 from tensorflow.python.client import device_lib
 import utils
 
+
 FLAGS = flags.FLAGS
 
 if __name__ == "__main__":
