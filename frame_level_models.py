@@ -236,6 +236,41 @@ class LstmModel(models.BaseModel):
         vocab_size=vocab_size,
         **unused_params)
 
+def mean(x):
+    x = tf.unstack(x)
+    aggregation = tf.zeros([1024])
+    for i in x:
+        aggregation += i
+    return aggregation/1024
+
+
+#x = batch_size * 1/4th of 300 frames # 1024
+def matrix_average(x, diviso):
+    sess = tf.InteractiveSession()
+    aggregation1 = []
+    aggregation2 = []
+    aggregation3 = []
+    aggregation4 = []
+    for i, item in  enumerate(x):
+        divisor = diviso[i]//4
+        temp1 = item[0: divisor]
+        temp1 = tf.unstack(temp1, 300)
+        temp2 = item[0: divisor]
+        temp2 = tf.unstack(temp2, 300)
+        temp3 = item[0: divisor]
+        temp3 = tf.unstack(temp3, 300)
+        temp4 = item[0: divisor]
+        temp4 = tf.unstack(temp4, 300)
+
+        aggregation1.append(mean(temp1))
+        aggregation2.append(mean(temp2))
+        aggregation3.append(mean(temp3))
+        aggregation4.append(mean(temp4))
+
+    print aggregation1[0].shape
+    return aggregation1, aggregation2, aggregation3, aggregation4
+
+
 
 class CNNLSTMModel(models.BaseModel):
 
@@ -255,21 +290,18 @@ class CNNLSTMModel(models.BaseModel):
       'batch_size' x 'num_classes'.
     """
     """4 different cnn layers into one rnn with sequence length 4"""
-    divisor = num_frames//4
-    quart1 = None
-    #batch_size x 32 x 32
-    quart2 = None
-    quart3 = None
-    quart4 = None
+    divisor = num_frames
+    print model_input.shape
+    model_input = tf.unstack(model_input)
 
-    average1 = tf.reduce_mean(model_input[0: divisor])
-    average2 = tf.reduce_mean(model_input[divisor: divisor*2])
-    average3 = tf.reduce_mean(model_input[divisor*2: divisor*3])
-    average4 = tf.reduce_mean(model_input[divisor*3:])
-    quart1 = tf.reshape(average1, [32, 32])
-    quart2 = tf.reshape(average2, [32, 32])
-    quart3 = tf.reshape(average3, [32, 32])
-    quart4 = tf.reshape(average4, [32, 32])
+    average1, average2, average3, average4 = matrix_average(model_input, divisor)
+
+    print average1
+
+    quart1 = tf.reshape(average1, [1, 32, 32, 1])
+    quart2 = tf.reshape(average2, [1, 32, 32, 1])
+    quart3 = tf.reshape(average3, [1, 32, 32, 1])
+    quart4 = tf.reshape(average4, [1, 32, 32, 1])
 
     p1conv1 = tf.layers.conv2d(
       inputs=quart1,
@@ -330,7 +362,9 @@ class CNNLSTMModel(models.BaseModel):
       padding="same",
       activation=tf.nn.relu)
     p4pool2 = tf.layers.max_pooling2d(inputs=p4conv2, pool_size=[2, 2], strides=2)
-    cnn_output = tf.concat([p1pool2, p2pool2, p3pool2, p4pool2])
+    cnn_output = tf.concat([tf.reshape(p1pool2, [1, 4096]), tf.reshape(p2pool2, [1, 4096]), tf.reshape(p3pool2, [1, 4096]), tf.reshape(p4pool2, [1, 4096])], 0)
+
+    print cnn_output.shape
 
     lstm_size = FLAGS.lstm_cells
     number_of_layers = FLAGS.lstm_layers
@@ -344,7 +378,7 @@ class CNNLSTMModel(models.BaseModel):
 
     loss = 0.0
 
-    outputs, state = tf.nn.dynamic_rnn(cnn_output, model_input,
+    outputs, state = tf.nn.dynamic_rnn(stacked_lstm, cnn_output,
                                        sequence_length=4,
                                        dtype=tf.float32)
 
