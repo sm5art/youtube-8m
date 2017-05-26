@@ -290,83 +290,25 @@ class CNNLSTMModel(models.BaseModel):
       'batch_size' x 'num_classes'.
     """
     """4 different cnn layers into one rnn with sequence length 4"""
-    divisor = num_frames
+    model_input = tf.reshape(model_input, [-1, 32, 32, 300])
     print model_input.shape
-    model_input = tf.unstack(model_input)
-
-    average1, average2, average3, average4 = matrix_average(model_input, divisor)
-
-    print average1
-
-    quart1 = tf.reshape(average1, [1, 32, 32, 1])
-    quart2 = tf.reshape(average2, [1, 32, 32, 1])
-    quart3 = tf.reshape(average3, [1, 32, 32, 1])
-    quart4 = tf.reshape(average4, [1, 32, 32, 1])
-
     p1conv1 = tf.layers.conv2d(
-      inputs=quart1,
-      filters=32,
-      kernel_size=[5, 5],
+      inputs=model_input,
+      filters=300,
+      kernel_size=[3, 3],
       padding="same",
       activation=tf.nn.relu)
     p1pool1 = tf.layers.max_pooling2d(inputs=p1conv1, pool_size=[2, 2], strides=2)
     p1conv2 = tf.layers.conv2d(
       inputs=p1pool1,
-      filters=64,
-      kernel_size=[5, 5],
+      filters=600,
+      kernel_size=[3, 3],
       padding="same",
       activation=tf.nn.relu)
     p1pool2 = tf.layers.max_pooling2d(inputs=p1conv2, pool_size=[2, 2], strides=2)
 
-    p2conv1 = tf.layers.conv2d(
-      inputs=quart2,
-      filters=32,
-      kernel_size=[5, 5],
-      padding="same",
-      activation=tf.nn.relu)
-    p2pool1 = tf.layers.max_pooling2d(inputs=p2conv1, pool_size=[2, 2], strides=2)
-    p2conv2 = tf.layers.conv2d(
-      inputs=p2pool1,
-      filters=64,
-      kernel_size=[5, 5],
-      padding="same",
-      activation=tf.nn.relu)
-    p2pool2 = tf.layers.max_pooling2d(inputs=p2conv2, pool_size=[2, 2], strides=2)
-
-    p3conv1 = tf.layers.conv2d(
-      inputs=quart3,
-      filters=32,
-      kernel_size=[5, 5],
-      padding="same",
-      activation=tf.nn.relu)
-    p3pool1 = tf.layers.max_pooling2d(inputs=p3conv1, pool_size=[2, 2], strides=2)
-    p3conv2 = tf.layers.conv2d(
-      inputs=p3pool1,
-      filters=64,
-      kernel_size=[5, 5],
-      padding="same",
-      activation=tf.nn.relu)
-    p3pool2 = tf.layers.max_pooling2d(inputs=p3conv2, pool_size=[2, 2], strides=2)
-
-    p4conv1 = tf.layers.conv2d(
-      inputs=quart4,
-      filters=32,
-      kernel_size=[5, 5],
-      padding="same",
-      activation=tf.nn.relu)
-    p4pool1 = tf.layers.max_pooling2d(inputs=p4conv1, pool_size=[2, 2], strides=2)
-    p4conv2 = tf.layers.conv2d(
-      inputs=p4pool1,
-      filters=64,
-      kernel_size=[5, 5],
-      padding="same",
-      activation=tf.nn.relu)
-    p4pool2 = tf.layers.max_pooling2d(inputs=p4conv2, pool_size=[2, 2], strides=2)
-    cnn_output = tf.concat([tf.reshape(p1pool2, [1, 4096]), tf.reshape(p2pool2, [1, 4096]), tf.reshape(p3pool2, [1, 4096]), tf.reshape(p4pool2, [1, 4096])], 0)
-
-    print cnn_output.shape
-
-    lstm_size = FLAGS.lstm_cells
+    outputconv = tf.reshape(p1pool2, [-1, 64, 600])
+    lstm_size = 64
     number_of_layers = FLAGS.lstm_layers
 
     stacked_lstm = tf.contrib.rnn.MultiRNNCell(
@@ -378,8 +320,8 @@ class CNNLSTMModel(models.BaseModel):
 
     loss = 0.0
 
-    outputs, state = tf.nn.dynamic_rnn(stacked_lstm, cnn_output,
-                                       sequence_length=4,
+    outputs, state = tf.nn.dynamic_rnn(stacked_lstm, outputconv,
+                                       sequence_length=num_frames[:600],
                                        dtype=tf.float32)
 
     aggregated_model = getattr(video_level_models,
